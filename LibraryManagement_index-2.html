@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Library Management System</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f8;font-family:Arial;color:#222}.wrap{max-width:1200px;margin:auto;padding:25px}header{background:#18212b;color:white;padding:25px;border-radius:12px;margin-bottom:20px}header h1{margin:0 0 8px}.cards{display:flex;gap:15px;margin-bottom:20px}.card{background:white;padding:20px;border-radius:10px;flex:1;box-shadow:0 2px 10px #0001}.card b{font-size:28px;display:block}.card span{color:#666}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.panel{background:white;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 2px 10px #0001}h2{margin-top:0}form{display:grid;gap:10px}input,select,button{padding:11px;border:1px solid #ccc;border-radius:6px;font-size:15px}button{background:#18212b;color:white;border:0;cursor:pointer}.issue{grid-template-columns:1fr 1fr auto}.table{overflow-x:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px;border-bottom:1px solid #ddd}th{background:#f1f3f5}.danger{background:#b42318}.return{background:#087443}.ok{color:#087443}.error{color:#b42318}#msg{min-height:25px;font-weight:bold;margin:10px 0}@media(max-width:800px){.grid,.issue{grid-template-columns:1fr}.cards{flex-direction:column}}
+</style>
+</head><body>
+<div class="wrap">
+<header><h1>📚 Library Management System</h1><p>Java + Spring Boot + JDBC + MySQL</p></header>
+
+<section class="cards">
+<div class="card"><b id="bookCount">0</b><span>Books</span></div>
+<div class="card"><b id="memberCount">0</b><span>Members</span></div>
+<div class="card"><b id="issueCount">0</b><span>Active Issues</span></div>
+</section>
+
+<div id="msg"></div>
+
+<section class="grid">
+<div class="panel"><h2>Add Book</h2>
+<form id="bookForm">
+<input id="title" placeholder="Book title" required>
+<input id="author" placeholder="Author" required>
+<input id="category" placeholder="Category">
+<input id="quantity" type="number" min="1" value="1" required>
+<button>Add Book</button>
+</form></div>
+
+<div class="panel"><h2>Add Member</h2>
+<form id="memberForm">
+<input id="memberName" placeholder="Member name" required>
+<input id="memberEmail" type="email" placeholder="Email" required>
+<input id="phone" placeholder="Phone">
+<button>Add Member</button>
+</form></div>
+</section>
+
+<section class="panel"><h2>Issue Book</h2>
+<form id="issueForm" class="issue">
+<select id="bookSelect" required></select>
+<select id="memberSelect" required></select>
+<button>Issue Book</button>
+</form></section>
+
+<section class="panel"><h2>Books</h2><div class="table"><table>
+<thead><tr><th>ID</th><th>Title</th><th>Author</th><th>Category</th><th>Available</th><th>Action</th></tr></thead>
+<tbody id="books"></tbody></table></div></section>
+
+<section class="panel"><h2>Members</h2><div class="table"><table>
+<thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Phone</th><th>Action</th></tr></thead>
+<tbody id="members"></tbody></table></div></section>
+
+<section class="panel"><h2>Issue / Return Records</h2><div class="table"><table>
+<thead><tr><th>ID</th><th>Book</th><th>Member</th><th>Issue Date</th><th>Return Date</th><th>Status</th><th>Action</th></tr></thead>
+<tbody id="issues"></tbody></table></div></section>
+</div><script>
+const api="/api";
+const $=id=>document.getElementById(id);
+const msg=(t,e=false)=>{$("msg").textContent=t;$("msg").className=e?"error":"ok";setTimeout(()=>$("msg").textContent="",3000)};
+
+async function load(){
+ try{
+  const [b,m,i]=await Promise.all([
+   fetch(api+"/books").then(r=>r.json()),
+   fetch(api+"/members").then(r=>r.json()),
+   fetch(api+"/issues").then(r=>r.json())
+  ]);
+  $("bookCount").textContent=b.length;
+  $("memberCount").textContent=m.length;
+  $("issueCount").textContent=i.filter(x=>x.status==="ISSUED").length;
+
+  $("books").innerHTML=b.map(x=>`<tr><td>${x.id}</td><td>${esc(x.title)}</td><td>${esc(x.author)}</td><td>${esc(x.category||"")}</td><td>${x.quantity}</td><td><button class="danger" onclick="deleteBook(${x.id})">Delete</button></td></tr>`).join("");
+  $("members").innerHTML=m.map(x=>`<tr><td>${x.id}</td><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||"")}</td><td><button class="danger" onclick="deleteMember(${x.id})">Delete</button></td></tr>`).join("");
+  $("bookSelect").innerHTML='<option value="">Select available book</option>'+b.filter(x=>x.quantity>0).map(x=>`<option value="${x.id}">${esc(x.title)} (${x.quantity})</option>`).join("");
+  $("memberSelect").innerHTML='<option value="">Select member</option>'+m.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("");
+  $("issues").innerHTML=i.map(x=>`<tr><td>${x.id}</td><td>${esc(x.bookTitle)}</td><td>${esc(x.memberName)}</td><td>${x.issueDate}</td><td>${x.returnDate||"-"}</td><td>${x.status}</td><td>${x.status==="ISSUED"?`<button class="return" onclick="returnBook(${x.id})">Return</button>`:"-"}</td></tr>`).join("");
+ }catch(e){msg("Could not connect to server",true)}
+}
+$("bookForm").onsubmit=async e=>{e.preventDefault();await send("/books","POST",{title:$("title").value,author:$("author").value,category:$("category").value,quantity:+$("quantity").value});e.target.reset();$("quantity").value=1;load()};
+$("memberForm").onsubmit=async e=>{e.preventDefault();await send("/members","POST",{name:$("memberName").value,email:$("memberEmail").value,phone:$("phone").value});e.target.reset();load()};
+$("issueForm").onsubmit=async e=>{e.preventDefault();await send("/issues","POST",{bookId:+$("bookSelect").value,memberId:+$("memberSelect").value});e.target.reset();load()};
+async function send(path,method,body){let r=await fetch(api+path,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});let t=await r.text();if(!r.ok)throw msg(t,true);msg(t)}
+async function deleteBook(id){if(confirm("Delete this book?")){await send("/books/"+id,"DELETE");load()}}
+async function deleteMember(id){if(confirm("Delete this member?")){await send("/members/"+id,"DELETE");load()}}
+async function returnBook(id){await send("/issues/"+id+"/return","PUT");load()}
+function esc(v){return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
+load();
+</script></body></html>
